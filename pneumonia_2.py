@@ -21,7 +21,7 @@ from sklearn.metrics import confusion_matrix, classification_report, accuracy_sc
 import seaborn as sns
 
 # Dataset Path
-dataset_path = "/content/drive/MyDrive/dataset/"
+dataset_path = "path_to_dataset"
 
 # Image size for MobileNetV2
 IMG_SIZE = (224, 224)
