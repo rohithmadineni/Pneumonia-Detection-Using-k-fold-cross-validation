@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pneumonia Detection from Chest X-rays</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-top: 2rem;
+            background-color: #f8f9fa;
+        }
+        .main-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .image-preview {
+            max-width: 100%;
+            max-height: 350px;
+            margin: 1rem 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            display: none;
+        }
+        .result-container {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            border-radius: 5px;
+            display: none;
+        }
+        .positive {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+        }
+        .negative {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 1rem 0;
+        }
+        .upload-container {
+            border: 2px dashed #ddd;
+            border-radius: 10px;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            cursor: pointer;
+        }
+        .upload-container:hover {
+            border-color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-container">
+            <h1 class="text-center mb-4">Pneumonia Detection</h1>
+            <p class="text-center text-muted mb-4">Upload a chest X-ray image to detect pneumonia</p>
+            
+            <form id="upload-form">
+                <div class="upload-container" id="dropzone">
+                    <img src="https://cdn-icons-png.flaticon.com/512/685/685686.png" width="80" class="mb-3">
+                    <h4>Drag & Drop or Click to Upload</h4>
+                    <p class="text-muted">Supported formats: JPG, JPEG, PNG</p>
+                    <input type="file" id="file-input" class="form-control" accept=".jpg,.jpeg,.png" style="display: none;">
+                </div>
+                
+                <img id="image-preview" class="image-preview mx-auto d-block">
+                
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary btn-lg" id="predict-btn" disabled>Analyze X-ray</button>
+                </div>
+            </form>
+            
+            <div id="loading" class="loading">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Analyzing your X-ray...</p>
+            </div>
+            
+            <div id="result-container" class="result-container">
+                <h4 id="result-title"></h4>
+                <p id="result-message"></p>
+                <div id="probability-container" class="mt-3">
+                    <label>Confidence:</label>
+                    <div class="progress">
+                        <div id="probability-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <p id="probability-text" class="text-end mt-1"></p>
+                </div>
+            </div>
+            
+            <div id="error-container" class="result-container error">
+                <h4>Error</h4>
+                <p id="error-message"></p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const dropzone = document.getElementById('dropzone');
+            const fileInput = document.getElementById('file-input');
+            const imagePreview = document.getElementById('image-preview');
+            const predictBtn = document.getElementById('predict-btn');
+            const loading = document.getElementById('loading');
+            const resultContainer = document.getElementById('result-container');
+            const resultTitle = document.getElementById('result-title');
+            const resultMessage = document.getElementById('result-message');
+            const errorContainer = document.getElementById('error-container');
+            const errorMessage = document.getElementById('error-message');
+            const probabilityBar = document.getElementById('probability-bar');
+            const probabilityText = document.getElementById('probability-text');
+            const uploadForm = document.getElementById('upload-form');
+            
+            dropzone.addEventListener('click', () => {
+                fileInput.click();
+            });
+            
+            dropzone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropzone.style.borderColor = '#007bff';
+            });
+            
+            dropzone.addEventListener('dragleave', () => {
+                dropzone.style.borderColor = '#ddd';
+            });
+            
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.style.borderColor = '#ddd';
+                
+                if (e.dataTransfer.files.length) {
+                    fileInput.files = e.dataTransfer.files;
+                    handleFileChange(e.dataTransfer.files[0]);
+                }
+            });
+            
+            fileInput.addEventListener('change', (e) => {
+                if (fileInput.files.length) {
+                    handleFileChange(fileInput.files[0]);
+                }
+            });
+            
+            function handleFileChange(file) {
+                // Reset displays
+                resultContainer.style.display = 'none';
+                errorContainer.style.display = 'none';
+                
+                if (!file.type.match('image/jpeg') && !file.type.match('image/png')) {
+                    showError('Please upload a valid image file (JPG, JPEG, or PNG)');
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imagePreview.src = e.target.result;
+                    imagePreview.style.display = 'block';
+                    predictBtn.disabled = false;
+                };
+                reader.readAsDataURL(file);
+            }
+            
+            uploadForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                if (!fileInput.files.length) {
+                    showError('Please select an image to upload');
+                    return;
+                }
+                
+                // Show loading spinner
+                loading.style.display = 'block';
+                resultContainer.style.display = 'none';
+                errorContainer.style.display = 'none';
+                predictBtn.disabled = true;
+                
+                // Create form data for API request
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                
+                try {
+                    const response = await fetch('/predict', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const result = await response.json();
+                    
+                    if (result.error) {
+                        showError(result.error);
+                        console.error("Error from server:", result.error);
+                    } else {
+                        // Display the prediction result
+                        resultContainer.style.display = 'block';
+                        
+                        // Set the appropriate class based on the prediction
+                        if (result.is_pneumonia) {
+                            resultContainer.className = 'result-container positive';
+                            resultTitle.textContent = 'Pneumonia Detected';
+                            resultMessage.textContent = 'The X-ray shows signs of pneumonia.';
+                        } else {
+                            resultContainer.className = 'result-container negative';
+                            resultTitle.textContent = 'Normal';
+                            resultMessage.textContent = 'The X-ray appears normal with no signs of pneumonia.';
+                        }
+                        
+                        // Update the probability bar
+                        const probabilityPercentage = Math.round(result.probability * 100);
+                        probabilityBar.style.width = `${probabilityPercentage}%`;
+                        probabilityText.textContent = `${probabilityPercentage}%`;
+                        
+                        // Set the appropriate color for the probability bar
+                        if (result.is_pneumonia) {
+                            probabilityBar.className = 'progress-bar bg-danger';
+                        } else {
+                            probabilityBar.className = 'progress-bar bg-success';
+                        }
+                    }
+                } catch (error) {
+                    showError(`Processing error: ${error.message}`);
+                    console.error("Exception:", error);
+                } finally {
+                    loading.style.display = 'none';
+                    predictBtn.disabled = false;
+                }
+            });
+            
+            function showError(message) {
+                errorContainer.style.display = 'block';
+                errorMessage.textContent = message;
+                
+                resultContainer.style.display = 'none';
+                loading.style.display = 'none';
+                predictBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
